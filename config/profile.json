@@ -1,0 +1,93 @@
+{
+  "personal": {
+    "first_name": "Sidharth",
+    "last_name": "Soman",
+    "email": "sidharthsoman065@gmail.com",
+    "phone": "+91-9645015897",
+    "location": "Calicut, Kerala, India",
+    "linkedin": "https://linkedin.com/in/sidharth-soman",
+    "github": "https://github.com/sidhu12sid",
+    "website": "https://sidharthsoman.online"
+  },
+  "search_criteria": {
+    "target_locations": [
+      "Calicut",
+      "Kochi",
+      "Trivandrum",
+      "Bangalore",
+      "Hyderabad",
+      "Mumbai",
+      "Pune",
+      "Remote"
+    ],
+    "date_posted": "today",
+    "min_fit_score": 70
+  },
+  "standard_screening_answers": {
+    "sponsorship_required": "No",
+    "authorized_to_work": "Yes",
+    "notice_period_weeks": "4",
+    "salary_expectation": ""
+  },
+  "role_profiles": {
+    "laravel": {
+      "track_name": "Laravel Full Stack / Backend",
+      "expected_salary": "600000",
+      "target_roles": [
+        "Laravel Developer",
+        "PHP Laravel Developer",
+        "Backend Developer (Laravel/PHP)"
+      ],
+      "resume_path": "assets/Sidharth_Soman_Laravel_Developer_Resume.pdf",
+      "experience_years": 1,
+      "primary_skills": [
+        "Laravel",
+        "PHP",
+        "MySQL",
+        "Eloquent ORM",
+        "RESTful APIs",
+        "React.js",
+        "Vue.js",
+        "Tailwind CSS",
+        "Redis Caching",
+        "Query Optimization",
+        "Git",
+        "Docker"
+      ],
+      "summary": "Backend & Full Stack Developer with 1+ years of experience specializing in PHP and Laravel web applications, RESTful APIs, MySQL database architecture, and frontend integrations. Proven ability to architect secure, high-throughput backend services and maintain enterprise web platforms."
+    },
+    "dotnet_angular": {
+      "track_name": ".NET & Angular Full Stack",
+      "expected_salary": "800000",
+      "target_roles": [
+        ".NET Angular Developer",
+        "Full Stack Developer (.NET/Angular)",
+        "Dotnet Angular Developer",
+        "ASP.NET Core & Angular Developer",
+        ".NET Developer",
+        "C# Backend Developer",
+        "Dotnet Developer"
+      ],
+      "resume_path": "assets/Sidharth_Soman_DotNet_Developer_Resume.pdf",
+      "experience_years": 3,
+      "primary_skills": [
+        ".NET",
+        ".NET Core",
+        "Angular",
+        "TypeScript",
+        "C#",
+        "ASP.NET Core Web API",
+        "ASP.NET MVC",
+        "Entity Framework Core",
+        "MS SQL Server",
+        "RESTful APIs",
+        "Dapper",
+        "xUnit",
+        "Azure App Services",
+        "Git",
+        "JWT Authentication"
+      ],
+      "summary": "Full Stack Software Developer with 3+ years of experience specializing in .NET Core (C#) backend RESTful Web APIs paired with modern Angular frontends. Proven experience building responsive single-page applications, integrating EF Core with MS SQL Server, and writing clean, scalable, test-driven enterprise code."
+    }
+  }
+}

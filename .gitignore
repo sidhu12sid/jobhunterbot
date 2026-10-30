@@ -1,0 +1,24 @@
+# Environment variables (NEVER COMMIT SENSITIVE KEYS)
+.env
+.env.local
+
+# Virtual environments
+.venv/
+env/
+venv/
+
+# Playwright browser profiles & runtime
+.browser_profile/
+test-results/
+playwright-report/
+
+# Logs & temp files
+*.log
+run_daily.log
+__pycache__/
+*.py[cod]
+*$py.class
+
+# OS artifacts
+.DS_Store
+Thumbs.db

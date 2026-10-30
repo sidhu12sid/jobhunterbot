@@ -1,0 +1,46 @@
+{
+  "personal": {
+    "first_name": "Alex",
+    "last_name": "Morgan",
+    "email": "alex.morgan.dev@example.com",
+    "phone": "+1 (555) 019-2834",
+    "location": "San Francisco, CA",
+    "linkedin": "https://linkedin.com/in/alexmorgan-dev",
+    "github": "https://github.com/alexmorgan-dev",
+    "website": "https://alexmorgan.dev",
+    "resume_path": "assets/resume.pdf"
+  },
+  "search_criteria": {
+    "target_roles": [
+      "Laravel Developer",
+      "Full Stack Engineer",
+      "PHP Developer",
+      "Python Backend Engineer"
+    ],
+    "location": "Remote",
+    "date_posted": "today",
+    "min_fit_score": 70
+  },
+  "standard_screening_answers": {
+    "sponsorship_required": "No",
+    "authorized_to_work": "Yes",
+    "notice_period_weeks": "2",
+    "salary_expectation": "100000"
+  },
+  "skills": [
+    "PHP",
+    "Laravel",
+    "Python",
+    "FastAPI",
+    "PostgreSQL",
+    "MySQL",
+    "Docker",
+    "AWS",
+    "Vue.js",
+    "React",
+    "RESTful APIs",
+    "CI/CD"
+  ],
+  "experience_years": 4,
+  "summary": "Full Stack & Backend Software Engineer with 4+ years of professional experience specializing in modern PHP (Laravel), Python (FastAPI/Django), relational databases (PostgreSQL/MySQL), and cloud deployments. Strong track record in designing resilient REST APIs, event-driven microservices, and modern web applications."
+}

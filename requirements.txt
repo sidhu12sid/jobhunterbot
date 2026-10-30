@@ -1,0 +1,8 @@
+httpx
+playwright
+playwright-stealth
+google-genai
+aiosqlite
+pydantic
+python-dotenv
+rich
