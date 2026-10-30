@@ -27,7 +27,7 @@
     "sponsorship_required": "No",
     "authorized_to_work": "Yes",
     "notice_period_weeks": "4",
-    "salary_expectation": ""
+    "salary_expectation": " "
   },
   "role_profiles": {
     "laravel": {

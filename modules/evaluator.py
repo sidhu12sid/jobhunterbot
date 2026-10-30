@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -10,6 +11,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 logger = logging.getLogger(__name__)
+
+# Suppress internal Google GenAI SDK info logs like AFC
+logging.getLogger("google_genai").setLevel(logging.WARNING)
 
 
 class ScreeningQA(BaseModel):
@@ -108,14 +112,18 @@ class JobFitEvaluator:
         prompt = f"{system_instruction}\n\nCandidate Profile Track & Job Description:\n{json.dumps(user_content, indent=2)}"
 
         try:
-            response = await self.client.aio.models.generate_content(
-                model=self.model,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=JobFitEvaluation,
-                    temperature=0.2
-                )
+            # Enforce 20s timeout so Google API retries don't freeze the pipeline
+            response = await asyncio.wait_for(
+                self.client.aio.models.generate_content(
+                    model=self.model,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        response_schema=JobFitEvaluation,
+                        temperature=0.2
+                    )
+                ),
+                timeout=20.0
             )
 
             raw_text = response.text or "{}"
