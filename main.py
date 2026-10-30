@@ -90,6 +90,7 @@ async def run_engine(
     track_filter: Optional[str] = None,
     roles_override: Optional[List[str]] = None,
     locations_override: Optional[List[str]] = None,
+    date_posted_override: Optional[str] = None,
     threshold_override: Optional[int] = None,
     max_apps_total: int = 10,
     rate_limit_sleep: float = 1.5
@@ -112,7 +113,7 @@ async def run_engine(
         "target_locations",
         ["Calicut, Kerala", "Kochi, Kerala", "Bangalore, Karnataka", "Remote"]
     )
-    date_posted = search_criteria.get("date_posted", "today")
+    date_posted = date_posted_override or search_criteria.get("date_posted", "today")
     min_score = threshold_override if threshold_override is not None else search_criteria.get("min_fit_score", 70)
 
     console.print(f"[bold]Candidate:[/bold] {personal.get('first_name')} {personal.get('last_name')} ({personal.get('location')})")
@@ -286,6 +287,12 @@ def parse_arguments() -> argparse.Namespace:
         help="Comma-separated list of target locations (e.g. 'Calicut, Kerala,Bangalore, Karnataka')"
     )
     parser.add_argument(
+        "--date-posted",
+        type=str,
+        default=None,
+        help="Date filter for job discovery (e.g. all, today, 3days, week)"
+    )
+    parser.add_argument(
         "--threshold",
         type=int,
         default=None,
@@ -330,6 +337,7 @@ def main() -> None:
             track_filter=args.track,
             roles_override=roles,
             locations_override=locations,
+            date_posted_override=args.date_posted,
             threshold_override=args.threshold,
             max_apps_total=args.max_apps
         )

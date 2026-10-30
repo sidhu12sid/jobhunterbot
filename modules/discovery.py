@@ -27,13 +27,14 @@ class RoleJobDiscovery:
     with country-specific targeting ('in' for India) and SQLite deduplication.
     """
 
-    JSEARCH_URL = "https://jsearch.p.rapidapi.com/search"
+    JSEARCH_URL = "https://jsearch.p.rapidapi.com/search-v2"
+    JSEARCH_V1_URL = "https://jsearch.p.rapidapi.com/search"
 
     def __init__(
         self,
         rapidapi_key: Optional[str] = None,
         db_path: str = DEFAULT_DB_PATH,
-        timeout: float = 15.0
+        timeout: float = 45.0
     ):
         self.rapidapi_key = rapidapi_key or os.getenv("RAPIDAPI_KEY", "")
         self.db_path = db_path
@@ -137,7 +138,6 @@ class RoleJobDiscovery:
 
         params = {
             "query": query_str,
-            "page": "1",
             "num_pages": "1",
             "date_posted": date_posted,
             "country": country
@@ -145,7 +145,13 @@ class RoleJobDiscovery:
 
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
+                # Primary call to search-v2
                 resp = await client.get(self.JSEARCH_URL, headers=headers, params=params)
+
+                # Fallback to search v1 if v2 ever returns 404
+                if resp.status_code == 404:
+                    logger.debug("search-v2 returned 404, attempting search-v1...")
+                    resp = await client.get(self.JSEARCH_V1_URL, headers=headers, params=params)
 
                 if resp.status_code == 429:
                     logger.warning("JSearch API rate limit reached (HTTP 429). Falling back to public aggregator.")
@@ -155,7 +161,15 @@ class RoleJobDiscovery:
                     logger.warning("JSearch API returned %s: %s", resp.status_code, resp.text[:200])
                     return await self._fetch_from_public_aggregator(role, location, country)
 
-                data = resp.json().get("data", [])
+                payload = resp.json()
+                raw_data = payload.get("data", {})
+                if isinstance(raw_data, dict):
+                    data = raw_data.get("jobs", [])
+                elif isinstance(raw_data, list):
+                    data = raw_data
+                else:
+                    data = []
+
                 results: List[Dict[str, Any]] = []
                 for item in data:
                     company = item.get("employer_name") or "Unknown"
