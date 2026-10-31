@@ -18,6 +18,7 @@ from database.db import (
     update_application_status
 )
 from modules.discovery import RoleJobDiscovery
+from modules.email_drafter import generate_email_draft
 from modules.evaluator import JobFitEvaluator
 from modules.it_park_discovery import ITParkDiscovery
 from modules.notifier import NotificationDispatcher
@@ -74,7 +75,7 @@ async def display_applications_summary(db_path: str = DEFAULT_DB_PATH) -> None:
         track_val = app.get("profile_used") or "-"
         note = (app.get("error_message") or "")[:35]
         status = app["status"]
-        status_style = "green" if status == "APPLIED" else ("red" if "MANUAL" in status else ("dim" if status == "SKIPPED" else "yellow"))
+        status_style = "green" if status == "APPLIED" else ("magenta" if "EMAIL" in status else ("red" if "MANUAL" in status else ("dim" if status == "SKIPPED" else "yellow")))
 
         table.add_row(
             str(app["id"]),
@@ -299,6 +300,50 @@ async def process_discovered_job(
 
     # Submission or Skip
     if should_apply and fit_score >= min_score:
+        hr_email = job.get("hr_email")
+
+        # Branch 1: Direct Email Application (Option B: 1-Click Draft Notification)
+        if hr_email:
+            console.print(f"  [magenta]▶ Direct HR Email detected: {hr_email}[/magenta]")
+            email_draft = generate_email_draft(
+                job=job,
+                profile_key=profile_key,
+                profile_data=profile_data,
+                personal_info=personal
+            )
+            outcome_status = "EMAIL_DRAFT_READY"
+            outcome_msg = f"1-Click email draft generated for HR ({hr_email})"
+            console.print(f"  Outcome: [bold magenta]{outcome_status}[/bold magenta] ({outcome_msg})")
+            console.print(f"  Subject: [italic]{email_draft['subject']}[/italic]")
+
+            # Update SQLite Record
+            await update_application_status(
+                job_hash=job_hash,
+                status=outcome_status,
+                error_message=outcome_msg,
+                fit_score=fit_score,
+                profile_used=profile_key,
+                screening_data=custom_answers,
+                db_path=db_path
+            )
+
+            # Dispatch Webhook Notification with 1-click draft
+            console.print("  [blue]Dispatching 1-click email draft alert...[/blue]")
+            await notifier.notify_application_event(
+                title=title,
+                company=company,
+                url=url,
+                fit_score=fit_score,
+                status=outcome_status,
+                reason=reason,
+                message=outcome_msg,
+                profile_used=profile_key,
+                source=source,
+                email_draft=email_draft
+            )
+            return True
+
+        # Branch 2: Web Application Form Submitter
         console.print(f"  [green]▶ High match for track '{profile_key}'! Initiating Submitter...[/green]")
 
         sub_res = await submitter.submit_application(

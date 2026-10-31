@@ -218,6 +218,15 @@ class ApplicationSubmitter:
                     logger.warning("Automated submission blocked post-fill: %s", reason)
                     return {"status": "MANUAL_REQUIRED", "message": reason}
 
+                # Check if page actually has interactive application form elements
+                input_count = await page.locator("input:not([type='hidden']), textarea, select, button[type='submit']").count()
+                if input_count == 0:
+                    logger.info("No interactive form inputs detected on %s", job_url)
+                    return {
+                        "status": "MANUAL_REQUIRED",
+                        "message": "No web form inputs found on page (requires email or external direct portal)"
+                    }
+
                 if dry_run:
                     logger.info("Dry-run active: Form populated successfully without clicking final submit.")
                     return {"status": "APPLIED", "message": "Form populated successfully (dry-run mode)"}

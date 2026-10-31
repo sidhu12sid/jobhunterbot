@@ -195,13 +195,17 @@ class ITParkDiscovery:
 
         return results
 
-    async def fetch_job_details(self, job_url: str, source: str) -> str:
-        """Fetch full job description text for a specific posting when evaluating."""
+    async def fetch_job_details(self, job_url: str, source: str) -> tuple[str, Optional[str]]:
+        """Fetch full job description text and HR contact email for a specific posting when evaluating."""
+        hr_email: Optional[str] = None
+        invalid_email_words = ("infopark", "bootstrap", "aos@", "sentry", "example", "cloudflare", "userway", "wix")
+        invalid_suffixes = (".png", ".jpg", ".jpeg", ".webp", ".svg", ".gif", ".css", ".js")
+
         try:
             async with httpx.AsyncClient(timeout=15.0, verify=False, follow_redirects=True) as client:
                 resp = await client.get(job_url, headers=self.DEFAULT_HEADERS)
                 if resp.status_code != 200:
-                    return ""
+                    return "", None
 
                 # Technopark detail inspection (Inertia data-page extraction)
                 if source == "Technopark":
@@ -213,14 +217,26 @@ class ITParkDiscovery:
                         if isinstance(job, dict):
                             desc = clean_text(job.get("job_description_content") or job.get("job_description") or "")
                             skills = clean_text(job.get("preferred_skills_content") or job.get("preferred_skills") or "")
-                            return f"{desc}\nPreferred Skills: {skills}".strip()
+                            raw_email = job.get("contact_email")
+                            if raw_email and "@" in raw_email:
+                                hr_email = raw_email.strip()
+                            return f"{desc}\nPreferred Skills: {skills}".strip(), hr_email
 
-                # Generic HTML extraction for Infopark and Cyberpark
+                # Extract emails from text for Infopark, Cyberpark, or generic IT park details
+                emails = re.findall(r"[\w\.-]+@[\w\.-]+\.[a-zA-Z]{2,}", resp.text)
+                valid_emails = [
+                    e.strip().lower() for e in set(emails)
+                    if not any(w in e.lower() for w in invalid_email_words)
+                    and not e.lower().endswith(invalid_suffixes)
+                ]
+                if valid_emails:
+                    hr_email = valid_emails[0]
+
                 clean = clean_text(resp.text)
-                return clean[:4000]
+                return clean[:4000], hr_email
         except Exception as exc:
             logger.debug("Failed to fetch job details from %s: %s", job_url, exc)
-            return ""
+            return "", None
 
     async def search_all_it_parks(
         self,
@@ -229,7 +245,7 @@ class ITParkDiscovery:
     ) -> List[Dict[str, Any]]:
         """Search Infopark, Technopark, and Cyberpark in parallel.
 
-        Deduplicates against SQLite applications table and returns fresh postings.
+        Deduplicates against SQLite applications table and returns fresh postings with HR emails.
         """
         logger.info("Executing IT Park multi-portal search for query='%s'...", query)
 
@@ -264,8 +280,8 @@ class ITParkDiscovery:
             already_exists = await job_exists(job_hash, db_path=self.db_path)
 
             if not already_exists:
-                # Enrich with full job description
-                full_desc = await self.fetch_job_details(url, source)
+                # Enrich with full job description and HR email
+                full_desc, hr_email = await self.fetch_job_details(url, source)
                 description = full_desc if full_desc else job.get("description", "")
 
                 await save_application(
@@ -286,7 +302,8 @@ class ITParkDiscovery:
                     "location": location,
                     "is_remote": False,
                     "source": source,
-                    "platform": source
+                    "platform": source,
+                    "hr_email": hr_email
                 })
             else:
                 logger.debug("Skipping existing IT park job: %s @ %s", title, company)

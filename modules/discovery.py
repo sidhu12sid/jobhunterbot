@@ -28,7 +28,6 @@ class RoleJobDiscovery:
     """
 
     JSEARCH_URL = "https://jsearch.p.rapidapi.com/search-v2"
-    JSEARCH_V1_URL = "https://jsearch.p.rapidapi.com/search"
 
     def __init__(
         self,
@@ -151,11 +150,6 @@ class RoleJobDiscovery:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 # Primary call to search-v2
                 resp = await client.get(self.JSEARCH_URL, headers=headers, params=params)
-
-                # Fallback to search v1 if v2 returns 404
-                if resp.status_code == 404:
-                    logger.debug("search-v2 returned 404, attempting search-v1...")
-                    resp = await client.get(self.JSEARCH_V1_URL, headers=headers, params=params)
 
                 if resp.status_code == 429:
                     error_msg = f"RapidAPI JSearch rate limit reached (HTTP 429) for role='{role}' in '{location}'. Check your RapidAPI quota."
