@@ -48,7 +48,7 @@ class RoleJobDiscovery:
         country: str = "in",
         sources: Optional[List[str]] = None
     ) -> List[Dict[str, Any]]:
-        """Query aggregator API for postings matching the role, location, country, and target sources.
+        """Query JSearch aggregator API for postings matching the role, location, country, and target sources.
 
         Deduplicates against SQLite applications table before returning.
         Returns list of normalized dicts:
@@ -58,13 +58,12 @@ class RoleJobDiscovery:
             "Searching jobs for role='%s', location='%s', country='%s', date_posted='%s', sources=%s",
             role, location, country, date_posted, sources
         )
-        raw_jobs: List[Dict[str, Any]] = []
+        if not self.rapidapi_key or self.rapidapi_key == "your_rapidapi_jsearch_key":
+            error_msg = "RAPIDAPI_KEY is not configured or is a placeholder in .env. Cannot search jobs without RapidAPI."
+            logger.error(error_msg)
+            raise ValueError(error_msg)
 
-        if self.rapidapi_key and self.rapidapi_key != "your_rapidapi_jsearch_key":
-            raw_jobs = await self._fetch_from_jsearch(role, location, date_posted, country, sources)
-        else:
-            logger.info("RAPIDAPI_KEY not configured or is placeholder. Using public aggregator fallback.")
-            raw_jobs = await self._fetch_from_public_aggregator(role, location, country)
+        raw_jobs = await self._fetch_from_jsearch(role, location, date_posted, country, sources)
 
         # Deduplicate against SQLite
         fresh_jobs: List[Dict[str, Any]] = []
@@ -153,18 +152,25 @@ class RoleJobDiscovery:
                 # Primary call to search-v2
                 resp = await client.get(self.JSEARCH_URL, headers=headers, params=params)
 
-                # Fallback to search v1 if v2 ever returns 404
+                # Fallback to search v1 if v2 returns 404
                 if resp.status_code == 404:
                     logger.debug("search-v2 returned 404, attempting search-v1...")
                     resp = await client.get(self.JSEARCH_V1_URL, headers=headers, params=params)
 
                 if resp.status_code == 429:
-                    logger.warning("JSearch API rate limit reached (HTTP 429). Falling back to public aggregator.")
-                    return await self._fetch_from_public_aggregator(role, location, country)
+                    error_msg = f"RapidAPI JSearch rate limit reached (HTTP 429) for role='{role}' in '{location}'. Check your RapidAPI quota."
+                    logger.error(error_msg)
+                    raise RuntimeError(error_msg)
+
+                if resp.status_code in (401, 403):
+                    error_msg = f"RapidAPI JSearch authorization failed (HTTP {resp.status_code}): {resp.text[:200]}. Verify your RAPIDAPI_KEY."
+                    logger.error(error_msg)
+                    raise RuntimeError(error_msg)
 
                 if resp.status_code != 200:
-                    logger.warning("JSearch API returned %s: %s", resp.status_code, resp.text[:200])
-                    return await self._fetch_from_public_aggregator(role, location, country)
+                    error_msg = f"RapidAPI JSearch request failed with HTTP {resp.status_code}: {resp.text[:200]}"
+                    logger.error(error_msg)
+                    raise RuntimeError(error_msg)
 
                 payload = resp.json()
                 raw_data = payload.get("data", {})
@@ -205,91 +211,10 @@ class RoleJobDiscovery:
                         "platform": publisher
                     })
                 return results
+        except httpx.TimeoutException as exc:
+            error_msg = f"RapidAPI JSearch timed out after {self.timeout}s for role='{role}' in '{location}'."
+            logger.error(error_msg)
+            raise TimeoutError(error_msg) from exc
         except Exception as exc:
-            logger.error("JSearch query failed: %s. Falling back to public feed.", exc)
-            return await self._fetch_from_public_aggregator(role, location, country)
-
-    async def _fetch_from_public_aggregator(
-        self,
-        role: str,
-        location: str,
-        country: str
-    ) -> List[Dict[str, Any]]:
-        """Public aggregator fallback (Arbeitnow & Remote Tech feeds) when RapidAPI is inactive."""
-        results: List[Dict[str, Any]] = []
-
-        try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                resp = await client.get("https://www.arbeitnow.com/api/job-board-api")
-                if resp.status_code == 200:
-                    data = resp.json().get("data", [])
-                    # Exclude generic non-technical words so generic words don't match unrelated stacks
-                    generic_words = {"full", "stack", "developer", "software", "engineer", "lead", "senior", "junior", "backend", "frontend", "web"}
-                    role_tokens = [t.lower() for t in re.split(r"[\s/().]+", role) if len(t) > 2]
-                    tech_tokens = [t for t in role_tokens if t not in generic_words]
-
-                    for item in data:
-                        title = item.get("title", "")
-                        title_lower = title.lower()
-                        desc_lower = clean_text(item.get("description", "")).lower()
-                        combined = f"{title_lower} {desc_lower}"
-
-                        # If tech tokens exist (e.g. laravel, php, dotnet, c#, angular), at least one must match
-                        matches = any(t in combined for t in tech_tokens) if tech_tokens else any(t in title_lower for t in role_tokens)
-                        if matches:
-                            results.append({
-                                "company": item.get("company_name", "Unknown"),
-                                "title": title,
-                                "url": item.get("url", ""),
-                                "location": item.get("location", location),
-                                "is_remote": bool(item.get("remote", False) or "remote" in location.lower()),
-                                "description": clean_text(item.get("description", "")),
-                                "source": "arbeitnow"
-                            })
-        except Exception as exc:
-            logger.debug("Public feed fetch error: %s", exc)
-
-        # Ensure contextual result for target skills if public feed has no active postings
-        if not results:
-            clean_role = role.strip()
-            loc_label = location if location != "Remote" else "Bangalore, Karnataka (Remote)"
-            is_laravel = any(k in clean_role.lower() for k in ["laravel", "php"])
-            is_dotnet_angular = any(k in clean_role.lower() for k in [".net", "dotnet", "angular", "c#"])
-
-            if is_laravel:
-                company_name = f"InnoByte Systems ({loc_label.split(',')[0].strip()})"
-                job_desc = (
-                    f"We are looking for a skilled {clean_role} with 3+ years of professional experience. "
-                    "Primary responsibilities include architecting RESTful APIs using PHP and Laravel, "
-                    "optimizing complex MySQL database queries, implementing caching with Redis, "
-                    "managing JWT/RBAC security, and collaborating with modern frontend teams (React/Vue). "
-                    "Strong background in Git, Docker, and clean code principles required."
-                )
-            elif is_dotnet_angular:
-                company_name = f"ApexCore Technologies ({loc_label.split(',')[0].strip()})"
-                job_desc = (
-                    f"We are seeking an experienced {clean_role} with 3+ years of experience in full-stack engineering. "
-                    "You will design and build enterprise-grade REST APIs using C# and .NET Core / .NET 8, "
-                    "develop modular single-page frontends with Angular and TypeScript, "
-                    "and manage relational data with Entity Framework Core and MS SQL Server. "
-                    "Experience with unit testing (xUnit/Moq), Azure deployments, and Git is highly valued."
-                )
-            else:
-                company_name = f"AeroTech {clean_role.split()[0]} Systems"
-                job_desc = (
-                    f"We are hiring a dedicated {clean_role} in {loc_label}. "
-                    "The ideal candidate will have 3+ years of experience with modern backend architecture, "
-                    "RESTful APIs, relational databases, query optimization, and automated testing."
-                )
-
-            results.append({
-                "company": company_name,
-                "title": f"Senior {clean_role}",
-                "url": f"https://boards.greenhouse.io/{clean_role.lower().replace(' ', '')}/jobs/482019?loc={loc_label.replace(' ', '+')}",
-                "location": loc_label,
-                "is_remote": ("remote" in location.lower()),
-                "description": job_desc,
-                "source": "skill_match_engine"
-            })
-
-        return results
+            logger.error("RapidAPI JSearch error for role='%s' in '%s': %s", role, location, exc)
+            raise

@@ -171,13 +171,17 @@ async def run_engine(
 
                 console.print(f"\n[bold blue]▶ Searching: {role} in {loc} (Country: India/Global)[/bold blue]")
 
-                jobs = await discovery.search_by_role(
-                    role=role,
-                    location=loc,
-                    date_posted=date_posted,
-                    country="in",
-                    sources=target_sources
-                )
+                try:
+                    jobs = await discovery.search_by_role(
+                        role=role,
+                        location=loc,
+                        date_posted=date_posted,
+                        country="in",
+                        sources=target_sources
+                    )
+                except Exception as exc:
+                    console.print(f"[bold red]  RapidAPI Discovery Error: {exc}[/bold red]")
+                    continue
 
                 # Rate limiting pacing sleep between search API calls
                 await asyncio.sleep(rate_limit_sleep)
