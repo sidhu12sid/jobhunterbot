@@ -26,6 +26,23 @@
       "Naukri",
       "Glassdoor"
     ],
+    "it_park_portals": [
+      {
+        "name": "Infopark",
+        "url": "https://infopark.in/companies-job",
+        "location": "Kochi"
+      },
+      {
+        "name": "Technopark",
+        "url": "https://technopark.in/job-search",
+        "location": "Trivandrum"
+      },
+      {
+        "name": "Cyberpark",
+        "url": "https://cyberparks.in/careers/",
+        "location": "Calicut"
+      }
+    ],
     "date_posted": "today",
     "min_fit_score": 70
   },

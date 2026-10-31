@@ -19,6 +19,7 @@ from database.db import (
 )
 from modules.discovery import RoleJobDiscovery
 from modules.evaluator import JobFitEvaluator
+from modules.it_park_discovery import ITParkDiscovery
 from modules.notifier import NotificationDispatcher
 from modules.submitter import ApplicationSubmitter
 
@@ -134,6 +135,7 @@ async def run_engine(
 
     # 3. Initialize Modules
     discovery = RoleJobDiscovery(db_path=db_path)
+    it_park_discovery = ITParkDiscovery(db_path=db_path)
     evaluator = JobFitEvaluator()
     submitter = ApplicationSubmitter(headless=True)
     notifier = NotificationDispatcher()
@@ -151,6 +153,7 @@ async def run_engine(
 
         resume_path = profile_data.get("resume_path", "assets/resume.pdf")
         target_roles = roles_override or profile_data.get("target_roles", [])
+        core_anchors = profile_data.get("core_anchors", [])
         expected_salary = profile_data.get("expected_salary")
 
         # Track-specific screening answers with customized expected salary
@@ -161,6 +164,39 @@ async def run_engine(
         salary_display = f" | Expected Salary: {expected_salary} INR" if expected_salary else ""
         console.rule(f"[bold magenta]Track: {profile_key.upper()} (Resume: {resume_path}{salary_display})[/bold magenta]")
 
+        # 4A. IT Park Direct Discovery (Infopark Kochi, Technopark Trivandrum, Cyberpark Calicut)
+        it_queries = [core_anchors[0]] if core_anchors else [profile_key]
+        for it_q in it_queries:
+            if total_submitted_or_flagged >= max_apps_total:
+                break
+            console.print(f"\n[bold green]▶ Searching Kerala IT Parks (Infopark, Technopark, Cyberpark) for '{it_q}'[/bold green]")
+            try:
+                it_jobs = await it_park_discovery.search_all_it_parks(it_q, core_anchors=core_anchors)
+                if not it_jobs:
+                    console.print(f"[dim]  No unseen IT park postings found for '{it_q}'.[/dim]")
+                for job in it_jobs:
+                    if total_submitted_or_flagged >= max_apps_total:
+                        break
+                    applied = await process_discovered_job(
+                        job=job,
+                        profile_key=profile_key,
+                        profile_data=profile_data,
+                        personal=personal,
+                        resume_path=resume_path,
+                        track_screening=track_screening,
+                        min_score=min_score,
+                        dry_run=dry_run,
+                        evaluator=evaluator,
+                        submitter=submitter,
+                        notifier=notifier,
+                        db_path=db_path
+                    )
+                    if applied:
+                        total_submitted_or_flagged += 1
+            except Exception as exc:
+                console.print(f"[bold red]  IT Park Discovery Error: {exc}[/bold red]")
+
+        # 4B. Aggregator Discovery (RapidAPI JSearch: LinkedIn, Indeed, Naukri, Glassdoor)
         for role in target_roles:
             if total_submitted_or_flagged >= max_apps_total:
                 break
@@ -194,88 +230,125 @@ async def run_engine(
                     if total_submitted_or_flagged >= max_apps_total:
                         break
 
-                    company = job["company"]
-                    title = job["title"]
-                    url = job["url"]
-                    job_hash = job["job_hash"]
-                    description = job["description"]
-                    job_loc = job["location"]
-
-                    console.print(f"\n[cyan]Evaluating Posting:[/cyan] [bold]{title}[/bold] @ {company} ({job_loc})")
-                    console.print(f"  URL: [dim]{url}[/dim]")
-
-                    # 5. Gemini Structured Fit Evaluation tailored to this specific profile track
-                    eval_result = await evaluator.evaluate_job_fit(
-                        job_description=description,
-                        role_profile=profile_data,
-                        global_screening=track_screening,
-                        min_score_threshold=min_score,
-                        job_title=title
+                    applied = await process_discovered_job(
+                        job=job,
+                        profile_key=profile_key,
+                        profile_data=profile_data,
+                        personal=personal,
+                        resume_path=resume_path,
+                        track_screening=track_screening,
+                        min_score=min_score,
+                        dry_run=dry_run,
+                        evaluator=evaluator,
+                        submitter=submitter,
+                        notifier=notifier,
+                        db_path=db_path
                     )
-
-                    fit_score = eval_result["fit_score"]
-                    should_apply = eval_result["should_apply"]
-                    reason = eval_result["reason"]
-                    custom_answers = eval_result.get("custom_answers", {})
-
-                    console.print(f"  Score: [bold]{fit_score}/100[/bold] | Apply Recommendation: [bold]{should_apply}[/bold]")
-                    console.print(f"  Reason: [italic]{reason}[/italic]")
-
-                    # 6. Submission or Skip
-                    if should_apply and fit_score >= min_score:
-                        console.print(f"  [green]▶ High match for track '{profile_key}'! Initiating Submitter...[/green]")
-
-                        sub_res = await submitter.submit_application(
-                            job_url=url,
-                            personal_info=personal,
-                            resume_path=resume_path,
-                            answers=custom_answers,
-                            dry_run=dry_run
-                        )
-
-                        outcome_status = sub_res["status"]
-                        outcome_msg = sub_res["message"]
-                        console.print(f"  Outcome: [bold]{outcome_status}[/bold] ({outcome_msg})")
-
-                        # Update SQLite Record
-                        await update_application_status(
-                            job_hash=job_hash,
-                            status=outcome_status,
-                            error_message=outcome_msg,
-                            fit_score=fit_score,
-                            profile_used=profile_key,
-                            screening_data=custom_answers,
-                            db_path=db_path
-                        )
-
-                        # 7. Dispatch Webhook Notification
-                        console.print("  [blue]Dispatching notification alert...[/blue]")
-                        await notifier.notify_application_event(
-                            title=title,
-                            company=company,
-                            url=url,
-                            fit_score=fit_score,
-                            status=outcome_status,
-                            reason=reason,
-                            message=outcome_msg,
-                            profile_used=profile_key,
-                            source=job.get("source", "")
-                        )
-
+                    if applied:
                         total_submitted_or_flagged += 1
-                    else:
-                        console.print("  [dim]Score below threshold. Marking as SKIPPED.[/dim]")
-                        await update_application_status(
-                            job_hash=job_hash,
-                            status="SKIPPED",
-                            error_message="Below minimum score threshold",
-                            fit_score=fit_score,
-                            profile_used=profile_key,
-                            db_path=db_path
-                        )
 
     console.rule("[bold green]All Pipeline Tracks Completed[/bold green]")
     await display_applications_summary(db_path=db_path)
+
+
+async def process_discovered_job(
+    job: Dict[str, Any],
+    profile_key: str,
+    profile_data: Dict[str, Any],
+    personal: Dict[str, Any],
+    resume_path: str,
+    track_screening: Dict[str, Any],
+    min_score: int,
+    dry_run: bool,
+    evaluator: JobFitEvaluator,
+    submitter: ApplicationSubmitter,
+    notifier: NotificationDispatcher,
+    db_path: str
+) -> bool:
+    """Evaluate a single job posting against candidate profile and submit or skip.
+
+    Returns True if application was submitted or flagged, False otherwise.
+    """
+    company = job["company"]
+    title = job["title"]
+    url = job["url"]
+    job_hash = job["job_hash"]
+    description = job["description"]
+    job_loc = job["location"]
+    source = job.get("source", "Web")
+
+    console.print(f"\n[cyan]Evaluating Posting:[/cyan] [bold]{title}[/bold] @ {company} ({job_loc}) [dim][{source}][/dim]")
+    console.print(f"  URL: [dim]{url}[/dim]")
+
+    # Gemini Structured Fit Evaluation tailored to this specific profile track
+    eval_result = await evaluator.evaluate_job_fit(
+        job_description=description,
+        role_profile=profile_data,
+        global_screening=track_screening,
+        min_score_threshold=min_score,
+        job_title=title
+    )
+
+    fit_score = eval_result["fit_score"]
+    should_apply = eval_result["should_apply"]
+    reason = eval_result["reason"]
+    custom_answers = eval_result.get("custom_answers", {})
+
+    console.print(f"  Score: [bold]{fit_score}/100[/bold] | Apply Recommendation: [bold]{should_apply}[/bold]")
+    console.print(f"  Reason: [italic]{reason}[/italic]")
+
+    # Submission or Skip
+    if should_apply and fit_score >= min_score:
+        console.print(f"  [green]▶ High match for track '{profile_key}'! Initiating Submitter...[/green]")
+
+        sub_res = await submitter.submit_application(
+            job_url=url,
+            personal_info=personal,
+            resume_path=resume_path,
+            answers=custom_answers,
+            dry_run=dry_run
+        )
+
+        outcome_status = sub_res["status"]
+        outcome_msg = sub_res["message"]
+        console.print(f"  Outcome: [bold]{outcome_status}[/bold] ({outcome_msg})")
+
+        # Update SQLite Record
+        await update_application_status(
+            job_hash=job_hash,
+            status=outcome_status,
+            error_message=outcome_msg,
+            fit_score=fit_score,
+            profile_used=profile_key,
+            screening_data=custom_answers,
+            db_path=db_path
+        )
+
+        # Dispatch Webhook Notification
+        console.print("  [blue]Dispatching notification alert...[/blue]")
+        await notifier.notify_application_event(
+            title=title,
+            company=company,
+            url=url,
+            fit_score=fit_score,
+            status=outcome_status,
+            reason=reason,
+            message=outcome_msg,
+            profile_used=profile_key,
+            source=source
+        )
+        return True
+    else:
+        console.print("  [dim]Score below threshold. Marking as SKIPPED.[/dim]")
+        await update_application_status(
+            job_hash=job_hash,
+            status="SKIPPED",
+            error_message="Below minimum score threshold",
+            fit_score=fit_score,
+            profile_used=profile_key,
+            db_path=db_path
+        )
+        return False
 
 
 def parse_arguments() -> argparse.Namespace:
