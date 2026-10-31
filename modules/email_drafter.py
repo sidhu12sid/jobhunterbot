@@ -23,27 +23,29 @@ def generate_email_draft(
     github = personal_info.get("github", "https://github.com/sidhu12sid")
     website = personal_info.get("website", "https://sidharthsoman.online")
 
-    experience_years = profile_data.get("experience_years", 1)
     resume_path = profile_data.get("resume_path", "assets/resume.pdf")
     resume_name = resume_path.replace("\\", "/").split("/")[-1]
 
-    exp_label = f"{experience_years}+ Year{'s' if experience_years != 1 else ''}"
-    subject = f"Application for {title} - {full_name} ({exp_label} Experience)"
+    exp_tag = profile_data.get("subject_experience_tag")
+    if not exp_tag:
+        exp_tag = "4 Years Experience" if "dotnet" in profile_key.lower() else "1+ Year Experience"
+
+    subject = f"Application for {title} - {full_name} ({exp_tag})"
 
     if "dotnet" in profile_key.lower():
         body = (
             f"Dear Hiring Team at {company},\n\n"
-            f"I am writing to express my strong interest in the {title} opening at {company}.\n\n"
-            f"With {exp_label} of software engineering experience specializing in C# and .NET Core RESTful APIs "
-            f"paired with modern Angular frontends, I have proven experience developing scalable enterprise web services, "
-            f"designing relational schemas with Entity Framework Core and MS SQL Server, and writing clean, test-driven code.\n\n"
+            f"I am writing to express my interest in the {title} role. "
+            f"With 4 years of software development experience specializing in C#, .NET Core, and enterprise RESTful APIs, "
+            f"I am confident in my ability to build scalable backend architectures and integrate modern responsive frontends.\n\n"
             f"Key technical highlights:\n"
-            f"- Scalable backend architecture using ASP.NET Core Web APIs, Dapper, and EF Core.\n"
-            f"- Responsive single-page applications with Angular, TypeScript, and RxJS.\n"
-            f"- Robust authentication with JWT and automated unit testing with xUnit.\n"
+            f"- 4 years of software development experience specializing in C#, .NET Core, and enterprise RESTful APIs.\n"
+            f"- Scalable ASP.NET Core Web APIs, microservices, and Entity Framework Core / MS SQL Server.\n"
+            f"- Single-page application development using Angular, TypeScript, and RxJS.\n"
+            f"- Robust security with JWT, automated testing (xUnit), Azure App Services, and Git CI/CD.\n"
             f"- Technical portfolio and projects: {website}\n\n"
-            f"I have attached my resume ({resume_name}) for your review. I would welcome the opportunity to discuss "
-            f"how my technical background and problem-solving skills align with your engineering goals at {company}.\n\n"
+            f"I have attached my resume ({resume_name}) for your review. I look forward to speaking with you about "
+            f"how my technical background can benefit the team at {company}.\n\n"
             f"Thank you for your time and consideration.\n\n"
             f"Warm regards,\n"
             f"{full_name}\n"
@@ -57,17 +59,18 @@ def generate_email_draft(
     else:  # Laravel Track
         body = (
             f"Dear Hiring Team at {company},\n\n"
-            f"I am writing to express my strong interest in the {title} role at {company}.\n\n"
-            f"With {exp_label} of software development experience specializing in PHP and the Laravel framework, "
-            f"I have hands-on experience building secure RESTful APIs, optimizing complex database queries with MySQL "
-            f"and Eloquent ORM, implementing Redis caching, and integrating responsive web interfaces.\n\n"
+            f"I am writing to express my interest in the {title} role. "
+            f"With 1+ year of hands-on experience developing enterprise web applications with PHP and Laravel, "
+            f"I am confident in my ability to write clean, maintainable backend code, optimize MySQL queries with Eloquent ORM, "
+            f"and deliver robust RESTful APIs.\n\n"
             f"Key technical highlights:\n"
-            f"- Architecting modular, high-performance web applications using Laravel and PHP.\n"
-            f"- Relational schema design, query optimization, and indexing in MySQL.\n"
-            f"- Modern frontend integration (React.js, Vue.js, Tailwind CSS) and Docker workflows.\n"
-            f"- Technical portfolio and live demos: {website}\n\n"
-            f"I have attached my resume ({resume_name}) for your review. I look forward to speaking with you "
-            f"about how I can contribute to {company}.\n\n"
+            f"- 1+ year of hands-on experience developing enterprise web applications with PHP and Laravel.\n"
+            f"- Robust RESTful API design, middleware, and authentication workflows.\n"
+            f"- Relational database schema design, indexing, and optimization in MySQL.\n"
+            f"- Frontend integrations with React.js, Vue.js, and Tailwind CSS, plus Git and Docker workflows.\n"
+            f"- Technical portfolio and live projects: {website}\n\n"
+            f"I have attached my resume ({resume_name}) for your review. I would welcome the opportunity to discuss "
+            f"how my technical skills can add immediate value to {company}.\n\n"
             f"Thank you for your time and consideration.\n\n"
             f"Warm regards,\n"
             f"{full_name}\n"

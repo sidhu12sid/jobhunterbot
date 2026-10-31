@@ -2,6 +2,7 @@
   "personal": {
     "first_name": "Sidharth",
     "last_name": "Soman",
+    "total_experience_years": 4,
     "email": "sidharthsoman065@gmail.com",
     "phone": "+91-9645015897",
     "location": "Calicut, Kerala, India",
@@ -63,6 +64,7 @@
       ],
       "resume_path": "assets/Sidharth_Soman_Laravel_Developer_Resume.pdf",
       "experience_years": 1,
+      "subject_experience_tag": "1+ Year Experience",
       "core_anchors": [
         "Laravel",
         "PHP"
@@ -91,7 +93,7 @@
         "Git",
         "Docker"
       ],
-      "summary": "Backend & Full Stack Developer with 1+ years of experience specializing in PHP and Laravel web applications, RESTful APIs, MySQL database architecture, and frontend integrations. Proven ability to architect secure, high-throughput backend services and maintain enterprise web platforms."
+      "summary": "Backend Developer with 1+ year of hands-on experience developing enterprise web applications with PHP and Laravel, RESTful APIs, MySQL database architecture, Eloquent ORM, and modern frontend integrations."
     },
     "dotnet_angular": {
       "track_name": ".NET & Angular Full Stack",
@@ -106,7 +108,8 @@
         "Dotnet Developer"
       ],
       "resume_path": "assets/Sidharth_Soman_DotNet_Developer_Resume.pdf",
-      "experience_years": 3,
+      "experience_years": 4,
+      "subject_experience_tag": "4 Years Experience",
       "core_anchors": [
         ".NET",
         ".NET Core",
@@ -142,7 +145,7 @@
         "Git",
         "JWT Authentication"
       ],
-      "summary": "Full Stack Software Developer with 3+ years of experience specializing in .NET Core (C#) backend RESTful Web APIs paired with modern Angular frontends. Proven experience building responsive single-page applications, integrating EF Core with MS SQL Server, and writing clean, scalable, test-driven enterprise code."
+      "summary": "Full Stack Software Developer with 4 years of software development experience specializing in C#, .NET Core, and enterprise RESTful APIs paired with modern Angular frontends, Entity Framework Core, and MS SQL Server architecture."
     }
   }
 }

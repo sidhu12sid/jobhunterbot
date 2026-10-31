@@ -8,8 +8,111 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 
+def build_discord_payload(job: dict, score: int, reason: str, email_subject: Optional[str] = None) -> dict:
+    """Standardize Discord embed construction into a strictly validated, clamped payload."""
+    status = str(job.get("status", "MATCH_FOUND")).strip()
+    source = str(job.get("source", "Job")).strip()
+    title = str(job.get("title", "Unknown Title")).strip()
+    company = str(job.get("company", "Unknown Company")).strip()
+    location = str(job.get("location", "N/A")).strip()
+    track = str(job.get("track") or job.get("profile_used") or "General").strip()
+    hr_email = job.get("hr_email")
+    email_draft = job.get("email_draft")
+
+    fields = [
+        {"name": "Status / Outcome", "value": (status or "MATCH_FOUND")[:250], "inline": True},
+        {"name": "Fit Score", "value": f"{score}/100", "inline": True},
+        {"name": "Platform / Source", "value": (source or "Unknown")[:100], "inline": True},
+    ]
+
+    if hr_email:
+        fields.append({"name": "Direct HR Email", "value": str(hr_email)[:250], "inline": False})
+
+    if email_subject:
+        fields.append({"name": "Generated Subject", "value": str(email_subject)[:250], "inline": False})
+
+    if email_draft and isinstance(email_draft, dict):
+        if email_draft.get("resume_name"):
+            fields.append({"name": "Resume to Attach", "value": str(email_draft["resume_name"])[:250], "inline": True})
+        if email_draft.get("mailto_url"):
+            fields.append({"name": "1-Click Direct Application", "value": f"[🚀 **Tap Here to Open Pre-Filled Email**]({email_draft['mailto_url']})"[:1024], "inline": False})
+
+    if reason:
+        fields.append({"name": "Evaluation Rationale", "value": str(reason)[:1000], "inline": False})
+
+    job_note = job.get("message") or job.get("note")
+    if job_note:
+        fields.append({"name": "Submission / Action Notes", "value": str(job_note)[:1000], "inline": False})
+
+    # Validate each field: Discord requires name (1-256) and value (1-1024)
+    valid_fields = []
+    for f in fields[:25]:
+        name_str = (str(f.get("name") or "Field")).strip()[:256] or "Field"
+        val_str = (str(f.get("value") or "N/A")).strip()[:1024] or "N/A"
+        valid_fields.append({
+            "name": name_str,
+            "value": val_str,
+            "inline": bool(f.get("inline", False))
+        })
+
+    title_text = f"[{source}] {title} @ {company}"[:256]
+    desc_text = f"**Location:** {location}\n**Track:** {track}"[:4096]
+    color = 3066993 if score >= 80 else 15844367  # Green for high match, Gold/Orange for review
+
+    embed_obj: Dict[str, Any] = {
+        "title": title_text,
+        "color": color,
+        "description": desc_text,
+        "fields": valid_fields,
+        "footer": {"text": "Role-Based Job Discovery & Application Engine"}
+    }
+
+    raw_url = str(job.get("url") or "").strip()
+    if raw_url.startswith(("http://", "https://")):
+        embed_obj["url"] = raw_url
+
+    return {
+        "username": "Job Hunter Bot",
+        "embeds": [embed_obj]
+    }
+
+
+async def send_discord_notification(
+    webhook_url: str,
+    job: dict,
+    score: int,
+    reason: str,
+    email_subject: Optional[str] = None
+) -> bool:
+    """Send standard, clamped Discord notification with complete error body logging."""
+    if not webhook_url or webhook_url.startswith("your_discord_webhook"):
+        logger.debug("Discord webhook not configured or placeholder.")
+        return False
+
+    payload = build_discord_payload(job, score, reason, email_subject)
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            res = await client.post(
+                webhook_url,
+                json=payload,
+                headers={"Content-Type": "application/json"}
+            )
+            if res.status_code in (200, 204):
+                logger.info("Discord alert delivered for '%s' @ '%s'", job.get("title"), job.get("company"))
+                return True
+            logger.warning(
+                "Discord webhook failed with HTTP %s: %s (Payload: %s)",
+                res.status_code, res.text, payload
+            )
+    except Exception as exc:
+        logger.error("Failed to send Discord alert: %s", exc)
+
+    return False
+
+
 class NotificationDispatcher:
-    """Dispatches webhook alerts for job application events (APPLIED and MANUAL_REQUIRED)."""
+    """Dispatches webhook alerts for job application events (APPLIED, MANUAL_REQUIRED, EMAIL_DRAFT_READY)."""
 
     def __init__(
         self,
@@ -51,75 +154,24 @@ class NotificationDispatcher:
         source: str = "",
         email_draft: Optional[Dict[str, str]] = None
     ) -> bool:
-        """Send rich Discord embed for APPLIED, MANUAL_REQUIRED, or EMAIL_DRAFT_READY events."""
+        """Send rich Discord embed with length-clamped, strictly validated fields."""
         if not self.discord_webhook or self.discord_webhook.startswith("your_discord_webhook"):
             logger.debug("Discord webhook not configured. Skipping alert.")
             return False
 
-        is_applied = (status.upper() == "APPLIED")
-        is_draft = (status.upper() == "EMAIL_DRAFT_READY")
-
-        if is_applied:
-            color = 0x2ECC71  # Emerald green
-            icon = "✅"
-        elif is_draft:
-            color = 0x9B59B6  # Amethyst Purple
-            icon = "📩"
-        else:
-            color = 0xE67E22  # Amber alert
-            icon = "⚠️"
-
-        fields = [
-            {"name": "Fit Score", "value": f"**{fit_score}/100**", "inline": True},
-            {"name": "Status", "value": f"`{status}`", "inline": True},
-        ]
-        if profile_used:
-            fields.append({"name": "Track / Profile", "value": f"`{profile_used}`", "inline": True})
-        if source:
-            fields.append({"name": "Platform / Source", "value": f"**{source}**", "inline": True})
-
-        if email_draft:
-            fields.extend([
-                {"name": "HR Contact", "value": f"`{email_draft.get('to', 'N/A')}`", "inline": True},
-                {"name": "Resume to Attach", "value": f"`{email_draft.get('resume_name', 'N/A')}`", "inline": True},
-                {"name": "1-Click Direct Application", "value": f"[🚀 **Tap Here to Open Pre-Filled Email**]({email_draft.get('mailto_url', '')})", "inline": False},
-                {"name": "Pre-filled Subject", "value": f"`{email_draft.get('subject', '')}`", "inline": False}
-            ])
-
-        fields.extend([
-            {"name": "Evaluation Rationale", "value": (reason[:1000] if reason else "N/A"), "inline": False},
-            {"name": "Submission / Action Notes", "value": (message[:1000] if message else "N/A"), "inline": False}
-        ])
-
-        footer_text = f"Platform: {source} • Google GenAI Engine" if source else "Role-Based Job Discovery & Application Engine • Google GenAI"
-
-        payload = {
-            "username": "Role Job Hunter Agent",
-            "avatar_url": "https://cdn-icons-png.flaticon.com/512/3850/3850285.png",
-            "embeds": [
-                {
-                    "title": f"{icon} [{status.upper()}] {title} @ {company}",
-                    "url": url,
-                    "color": color,
-                    "fields": fields,
-                    "footer": {
-                        "text": footer_text
-                    }
-                }
-            ]
+        job_dict = {
+            "title": title,
+            "company": company,
+            "url": url,
+            "status": status,
+            "source": source or "Job",
+            "track": profile_used or "General",
+            "message": message,
+            "hr_email": email_draft.get("to") if email_draft else None,
+            "email_draft": email_draft
         }
-
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                res = await client.post(self.discord_webhook, json=payload)
-                if res.status_code in (200, 204):
-                    logger.info("Discord alert delivered for %s @ %s", title, company)
-                    return True
-                logger.warning("Discord webhook returned status %s: %s", res.status_code, res.text)
-        except Exception as exc:
-            logger.error("Failed to send Discord alert: %s", exc)
-
-        return False
+        email_sub = email_draft.get("subject") if email_draft else None
+        return await send_discord_notification(self.discord_webhook, job_dict, fit_score, reason, email_sub)
 
     async def send_telegram_alert(
         self,

@@ -19,6 +19,55 @@ def clean_text(raw_text: Optional[str]) -> str:
     return " ".join(text.split())
 
 
+DISQUALIFIED_LISTING_KEYWORDS = [
+    "legal", "content specialist", "marketing", "seo", "growth lead",
+    "affiliate", "sdr", "sales", "qa tester", "manual qa", "flutter",
+    "odoo", "ux writer", "recruiter", "hr executive", "telecaller",
+    "accountant", "graphic designer", "video editor", "business development",
+    "inside sales", "counsel", "advocate", "copywriter", "receptionist",
+    "operations executive", "content writer"
+]
+
+TECH_ALLOWLIST_TOKENS = [
+    "developer", "engineer", "programmer", "architect", "laravel",
+    "php", "backend", "full stack", "fullstack", ".net", "dotnet",
+    "c#", "angular", "software", "web", "frontend", "api"
+]
+
+
+def is_relevant_tech_title(title: str, core_anchors: Optional[List[str]] = None) -> bool:
+    """Pre-filter listing titles to drop non-tech and non-developer roles at listing phase."""
+    t_lower = (title or "").strip().lower()
+
+    # 1. Discard non-tech domains immediately
+    for bad in DISQUALIFIED_LISTING_KEYWORDS:
+        pattern = rf"(?:^|[^a-zA-Z0-9]){re.escape(bad)}(?:$|[^a-zA-Z0-9])"
+        if re.search(pattern, t_lower):
+            logger.debug("Listing pre-filter: Dropped non-tech title '%s'", title)
+            return False
+
+    # 2. Check track-specific anchor preference if provided (e.g. laravel, php, .net)
+    if core_anchors:
+        anchor_tokens = [a.lower() for a in core_anchors]
+        has_anchor = any(
+            re.search(rf"(?:^|[^a-zA-Z0-9]){re.escape(token)}(?:$|[^a-zA-Z0-9])", t_lower)
+            for token in anchor_tokens
+        )
+        if has_anchor:
+            return True
+
+    # 3. Check general developer/engineering allowlist
+    matches_tech = any(
+        re.search(rf"(?:^|[^a-zA-Z0-9]){re.escape(token)}(?:$|[^a-zA-Z0-9])", t_lower)
+        for token in TECH_ALLOWLIST_TOKENS
+    )
+    if not matches_tech:
+        logger.debug("Listing pre-filter: Title '%s' does not match tech/developer allowlist", title)
+        return False
+
+    return True
+
+
 class ITParkDiscovery:
     """Dedicated job discovery engine for major Kerala IT Park portals:
 
@@ -43,8 +92,12 @@ class ITParkDiscovery:
         self.db_path = db_path
         self.timeout = timeout
 
-    async def fetch_infopark_jobs(self, search_query: str = "") -> List[Dict[str, Any]]:
-        """Scrape current job postings from Infopark Kochi companies portal."""
+    async def fetch_infopark_jobs(
+        self,
+        search_query: str = "",
+        core_anchors: Optional[List[str]] = None
+    ) -> List[Dict[str, Any]]:
+        """Scrape current job postings from Infopark Kochi with listing-phase title filtering."""
         results: List[Dict[str, Any]] = []
         params = {"search": search_query} if search_query else {}
 
@@ -72,6 +125,10 @@ class ITParkDiscovery:
                     if not title or not detail_url:
                         continue
 
+                    # Listing-Phase Pre-Filter: Discard non-tech roles immediately
+                    if not is_relevant_tech_title(title, core_anchors):
+                        continue
+
                     description = f"Infopark Kochi Opening: {title} at {company}. Posted: {post_info}, Closing: {close_info}."
 
                     results.append({
@@ -85,14 +142,18 @@ class ITParkDiscovery:
                         "platform": "Infopark"
                     })
 
-                logger.info("Discovered %d postings from Infopark for query '%s'", len(results), search_query)
+                logger.info("Retained %d tech-relevant postings from Infopark for query '%s'", len(results), search_query)
         except Exception as exc:
             logger.error("Error scraping Infopark for '%s': %s", search_query, exc)
 
         return results
 
-    async def fetch_technopark_jobs(self, search_query: str = "") -> List[Dict[str, Any]]:
-        """Query Technopark Trivandrum JSON API."""
+    async def fetch_technopark_jobs(
+        self,
+        search_query: str = "",
+        core_anchors: Optional[List[str]] = None
+    ) -> List[Dict[str, Any]]:
+        """Query Technopark Trivandrum JSON API with listing-phase title filtering."""
         results: List[Dict[str, Any]] = []
         params = {
             "page": "1",
@@ -121,6 +182,10 @@ class ITParkDiscovery:
                     if not job_id:
                         continue
 
+                    # Listing-Phase Pre-Filter: Discard non-tech roles immediately
+                    if not is_relevant_tech_title(title, core_anchors):
+                        continue
+
                     detail_url = f"https://technopark.in/job-details/{job_id}"
                     description = f"Technopark Trivandrum Opening: {title} at {company}. Posted: {posted_date}, Closing: {closing_date}."
 
@@ -135,14 +200,18 @@ class ITParkDiscovery:
                         "platform": "Technopark"
                     })
 
-                logger.info("Discovered %d postings from Technopark for query '%s'", len(results), search_query)
+                logger.info("Retained %d tech-relevant postings from Technopark for query '%s'", len(results), search_query)
         except Exception as exc:
             logger.error("Error fetching Technopark API for '%s': %s", search_query, exc)
 
         return results
 
-    async def fetch_cyberpark_jobs(self, search_query: str = "") -> List[Dict[str, Any]]:
-        """Scrape active career postings from Cyberpark Calicut."""
+    async def fetch_cyberpark_jobs(
+        self,
+        search_query: str = "",
+        core_anchors: Optional[List[str]] = None
+    ) -> List[Dict[str, Any]]:
+        """Scrape active career postings from Cyberpark Calicut with listing-phase title filtering."""
         results: List[Dict[str, Any]] = []
         data_payload = {
             "search_keywords": search_query,
@@ -176,6 +245,10 @@ class ITParkDiscovery:
                     if not url or not title:
                         continue
 
+                    # Listing-Phase Pre-Filter: Discard non-tech roles immediately
+                    if not is_relevant_tech_title(title, core_anchors):
+                        continue
+
                     description = f"Cyberpark Calicut Opening: {title} at {company}."
 
                     results.append({
@@ -189,7 +262,7 @@ class ITParkDiscovery:
                         "platform": "Cyberpark"
                     })
 
-                logger.info("Discovered %d postings from Cyberpark for query '%s'", len(results), search_query)
+                logger.info("Retained %d tech-relevant postings from Cyberpark for query '%s'", len(results), search_query)
         except Exception as exc:
             logger.error("Error scraping Cyberpark for '%s': %s", search_query, exc)
 
@@ -249,11 +322,11 @@ class ITParkDiscovery:
         """
         logger.info("Executing IT Park multi-portal search for query='%s'...", query)
 
-        # Run portal scrapers in parallel
+        # Run portal scrapers in parallel with listing-phase pre-filtering
         results = await asyncio.gather(
-            self.fetch_infopark_jobs(query),
-            self.fetch_technopark_jobs(query),
-            self.fetch_cyberpark_jobs(query),
+            self.fetch_infopark_jobs(query, core_anchors=core_anchors),
+            self.fetch_technopark_jobs(query, core_anchors=core_anchors),
+            self.fetch_cyberpark_jobs(query, core_anchors=core_anchors),
             return_exceptions=True
         )
 
