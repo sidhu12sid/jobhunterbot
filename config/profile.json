@@ -45,7 +45,8 @@
       }
     ],
     "date_posted": "today",
-    "min_fit_score": 70
+    "min_fit_score": 70,
+    "enable_rapidapi": false
   },
   "standard_screening_answers": {
     "sponsorship_required": "No",

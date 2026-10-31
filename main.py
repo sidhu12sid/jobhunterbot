@@ -101,7 +101,8 @@ async def run_engine(
     date_posted_override: Optional[str] = None,
     threshold_override: Optional[int] = None,
     max_apps_total: int = 10,
-    rate_limit_sleep: float = 1.5
+    rate_limit_sleep: float = 1.5,
+    enable_rapidapi: Optional[bool] = None
 ) -> None:
     """Orchestrate nested multi-role, multi-location job discovery and application."""
     console.rule("[bold cyan]Role-Based Job Discovery & Application Engine[/bold cyan]")
@@ -116,6 +117,15 @@ async def run_engine(
     search_criteria = profile.get("search_criteria", {})
     standard_screening = profile.get("standard_screening_answers", {})
     role_profiles: Dict[str, Any] = profile.get("role_profiles", {})
+
+    # Determine whether RapidAPI is enabled
+    if enable_rapidapi is None:
+        profile_setting = search_criteria.get("enable_rapidapi")
+        if profile_setting is not None:
+            enable_rapidapi = bool(profile_setting)
+        else:
+            env_val = os.getenv("ENABLE_RAPIDAPI", "false").strip().lower()
+            enable_rapidapi = env_val in ("true", "1", "yes")
 
     target_locations = locations_override or search_criteria.get(
         "target_locations",
@@ -132,10 +142,12 @@ async def run_engine(
     console.print(f"[bold]Active Tracks:[/bold] {', '.join(role_profiles.keys())}")
     console.print(f"[bold]Target Locations:[/bold] {', '.join(target_locations)}")
     console.print(f"[bold]Target Platforms:[/bold] {', '.join(target_sources)}")
+    rapidapi_status = "[green]Enabled[/green]" if enable_rapidapi else "[yellow]Disabled (Kerala IT Parks Portals Only)[/yellow]"
+    console.print(f"[bold]RapidAPI Aggregator:[/bold] {rapidapi_status}")
     console.print(f"[bold]Execution Mode:[/bold] {'[yellow]Dry-Run[/yellow]' if dry_run else '[red]LIVE APPLICATION[/red]'} | [bold]Min Score:[/bold] {min_score}\n")
 
     # 3. Initialize Modules
-    discovery = RoleJobDiscovery(db_path=db_path)
+    discovery = RoleJobDiscovery(db_path=db_path, enabled=enable_rapidapi)
     it_park_discovery = ITParkDiscovery(db_path=db_path)
     evaluator = JobFitEvaluator()
     submitter = ApplicationSubmitter(headless=True)
@@ -198,55 +210,58 @@ async def run_engine(
                 console.print(f"[bold red]  IT Park Discovery Error: {exc}[/bold red]")
 
         # 4B. Aggregator Discovery (RapidAPI JSearch: LinkedIn, Indeed, Naukri, Glassdoor)
-        for role in target_roles:
-            if total_submitted_or_flagged >= max_apps_total:
-                break
-
-            for loc in target_locations:
+        if not enable_rapidapi:
+            console.print(f"\n[dim yellow]▶ RapidAPI Aggregator is disabled (ENABLE_RAPIDAPI=false). Skipping aggregator search for {profile_key.upper()} (IT Park portals only).[/dim yellow]")
+        else:
+            for role in target_roles:
                 if total_submitted_or_flagged >= max_apps_total:
                     break
 
-                console.print(f"\n[bold blue]▶ Searching: {role} in {loc} (Country: India/Global)[/bold blue]")
-
-                try:
-                    jobs = await discovery.search_by_role(
-                        role=role,
-                        location=loc,
-                        date_posted=date_posted,
-                        country="in",
-                        sources=target_sources
-                    )
-                except Exception as exc:
-                    console.print(f"[bold red]  RapidAPI Discovery Error: {exc}[/bold red]")
-                    continue
-
-                # Rate limiting pacing sleep between search API calls
-                await asyncio.sleep(rate_limit_sleep)
-
-                if not jobs:
-                    console.print(f"[dim]  No unseen postings found for '{role}' in '{loc}'.[/dim]")
-                    continue
-
-                for job in jobs:
+                for loc in target_locations:
                     if total_submitted_or_flagged >= max_apps_total:
                         break
 
-                    applied = await process_discovered_job(
-                        job=job,
-                        profile_key=profile_key,
-                        profile_data=profile_data,
-                        personal=personal,
-                        resume_path=resume_path,
-                        track_screening=track_screening,
-                        min_score=min_score,
-                        dry_run=dry_run,
-                        evaluator=evaluator,
-                        submitter=submitter,
-                        notifier=notifier,
-                        db_path=db_path
-                    )
-                    if applied:
-                        total_submitted_or_flagged += 1
+                    console.print(f"\n[bold blue]▶ Searching: {role} in {loc} (Country: India/Global)[/bold blue]")
+
+                    try:
+                        jobs = await discovery.search_by_role(
+                            role=role,
+                            location=loc,
+                            date_posted=date_posted,
+                            country="in",
+                            sources=target_sources
+                        )
+                    except Exception as exc:
+                        console.print(f"[bold red]  RapidAPI Discovery Error: {exc}[/bold red]")
+                        continue
+
+                    # Rate limiting pacing sleep between search API calls
+                    await asyncio.sleep(rate_limit_sleep)
+
+                    if not jobs:
+                        console.print(f"[dim]  No unseen postings found for '{role}' in '{loc}'.[/dim]")
+                        continue
+
+                    for job in jobs:
+                        if total_submitted_or_flagged >= max_apps_total:
+                            break
+
+                        applied = await process_discovered_job(
+                            job=job,
+                            profile_key=profile_key,
+                            profile_data=profile_data,
+                            personal=personal,
+                            resume_path=resume_path,
+                            track_screening=track_screening,
+                            min_score=min_score,
+                            dry_run=dry_run,
+                            evaluator=evaluator,
+                            submitter=submitter,
+                            notifier=notifier,
+                            db_path=db_path
+                        )
+                        if applied:
+                            total_submitted_or_flagged += 1
 
     console.rule("[bold green]All Pipeline Tracks Completed[/bold green]")
     await display_applications_summary(db_path=db_path)
@@ -453,6 +468,18 @@ def parse_arguments() -> argparse.Namespace:
         help="Maximum jobs to submit/process in this run"
     )
     parser.add_argument(
+        "--enable-rapidapi",
+        action="store_true",
+        default=False,
+        help="Enable RapidAPI JSearch aggregator discovery (overrides default/profile disabled setting)"
+    )
+    parser.add_argument(
+        "--disable-rapidapi",
+        action="store_true",
+        default=False,
+        help="Disable RapidAPI JSearch aggregator discovery (fetch from IT Park portals only)"
+    )
+    parser.add_argument(
         "--show-db",
         action="store_true",
         help="Display SQLite applications table and exit"
@@ -473,6 +500,12 @@ def main() -> None:
     sources = [s.strip() for s in args.sources.split(",") if s.strip()] if args.sources else None
     dry_run = not args.live
 
+    enable_rapidapi = None
+    if args.enable_rapidapi:
+        enable_rapidapi = True
+    elif args.disable_rapidapi:
+        enable_rapidapi = False
+
     asyncio.run(
         run_engine(
             profile_path=args.profile,
@@ -483,7 +516,8 @@ def main() -> None:
             sources_override=sources,
             date_posted_override=args.date_posted,
             threshold_override=args.threshold,
-            max_apps_total=args.max_apps
+            max_apps_total=args.max_apps,
+            enable_rapidapi=enable_rapidapi
         )
     )
 

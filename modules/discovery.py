@@ -33,11 +33,16 @@ class RoleJobDiscovery:
         self,
         rapidapi_key: Optional[str] = None,
         db_path: str = DEFAULT_DB_PATH,
-        timeout: float = 45.0
+        timeout: float = 45.0,
+        enabled: Optional[bool] = None
     ):
         self.rapidapi_key = rapidapi_key or os.getenv("RAPIDAPI_KEY", "")
         self.db_path = db_path
         self.timeout = timeout
+        if enabled is not None:
+            self.enabled = enabled
+        else:
+            self.enabled = os.getenv("ENABLE_RAPIDAPI", "false").strip().lower() in ("true", "1", "yes")
 
     async def search_by_role(
         self,
@@ -53,6 +58,10 @@ class RoleJobDiscovery:
         Returns list of normalized dicts:
         {job_hash, company, title, url, description, location, is_remote, source, platform}
         """
+        if not self.enabled:
+            logger.info("RapidAPI discovery is disabled (ENABLE_RAPIDAPI=false). Skipping aggregator search.")
+            return []
+
         logger.info(
             "Searching jobs for role='%s', location='%s', country='%s', date_posted='%s', sources=%s",
             role, location, country, date_posted, sources
