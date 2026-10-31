@@ -95,6 +95,7 @@ async def run_engine(
     track_filter: Optional[str] = None,
     roles_override: Optional[List[str]] = None,
     locations_override: Optional[List[str]] = None,
+    sources_override: Optional[List[str]] = None,
     date_posted_override: Optional[str] = None,
     threshold_override: Optional[int] = None,
     max_apps_total: int = 10,
@@ -118,12 +119,17 @@ async def run_engine(
         "target_locations",
         ["Calicut, Kerala", "Kochi, Kerala", "Bangalore, Karnataka", "Remote"]
     )
+    target_sources = sources_override or search_criteria.get(
+        "target_sources",
+        ["LinkedIn", "Indeed", "Naukri", "Glassdoor"]
+    )
     date_posted = date_posted_override or search_criteria.get("date_posted", "today")
     min_score = threshold_override if threshold_override is not None else search_criteria.get("min_fit_score", 70)
 
     console.print(f"[bold]Candidate:[/bold] {personal.get('first_name')} {personal.get('last_name')} ({personal.get('location')})")
     console.print(f"[bold]Active Tracks:[/bold] {', '.join(role_profiles.keys())}")
     console.print(f"[bold]Target Locations:[/bold] {', '.join(target_locations)}")
+    console.print(f"[bold]Target Platforms:[/bold] {', '.join(target_sources)}")
     console.print(f"[bold]Execution Mode:[/bold] {'[yellow]Dry-Run[/yellow]' if dry_run else '[red]LIVE APPLICATION[/red]'} | [bold]Min Score:[/bold] {min_score}\n")
 
     # 3. Initialize Modules
@@ -169,7 +175,8 @@ async def run_engine(
                     role=role,
                     location=loc,
                     date_posted=date_posted,
-                    country="in"
+                    country="in",
+                    sources=target_sources
                 )
 
                 # Rate limiting pacing sleep between search API calls
@@ -246,7 +253,8 @@ async def run_engine(
                             status=outcome_status,
                             reason=reason,
                             message=outcome_msg,
-                            profile_used=profile_key
+                            profile_used=profile_key,
+                            source=job.get("source", "")
                         )
 
                         total_submitted_or_flagged += 1
@@ -292,6 +300,12 @@ def parse_arguments() -> argparse.Namespace:
         help="Comma-separated list of target locations (e.g. 'Calicut, Kerala,Bangalore, Karnataka')"
     )
     parser.add_argument(
+        "--sources",
+        type=str,
+        default=None,
+        help="Comma-separated list of target job platforms (e.g. 'LinkedIn,Indeed,Naukri,Glassdoor')"
+    )
+    parser.add_argument(
         "--date-posted",
         type=str,
         default=None,
@@ -333,6 +347,7 @@ def main() -> None:
 
     roles = [r.strip() for r in args.roles.split(",") if r.strip()] if args.roles else None
     locations = [loc.strip() for loc in args.locations.split(",") if loc.strip()] if args.locations else None
+    sources = [s.strip() for s in args.sources.split(",") if s.strip()] if args.sources else None
     dry_run = not args.live
 
     asyncio.run(
@@ -342,6 +357,7 @@ def main() -> None:
             track_filter=args.track,
             roles_override=roles,
             locations_override=locations,
+            sources_override=sources,
             date_posted_override=args.date_posted,
             threshold_override=args.threshold,
             max_apps_total=args.max_apps

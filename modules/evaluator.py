@@ -86,13 +86,19 @@ class JobFitEvaluator:
                 primary_skills=primary_skills,
                 summary=summary,
                 target_roles=target_roles,
+                experience_years=experience_years,
                 screening=screening_answers,
                 min_threshold=min_score_threshold
             )
 
         system_instruction = (
             "You are an expert technical recruiter assessing candidate-job fit for a specific engineering role. "
-            "Compare the candidate's target role profile (specifically primary_skills and summary) against the job description strictly and objectively. "
+            "Compare the candidate's target role profile (specifically primary_skills, summary, and experience_years) against the job description strictly and objectively. "
+            "EXPERIENCE MATCHING RULES:\n"
+            f"- Candidate Experience Level: Exactly {experience_years} year(s) of professional experience in this track.\n"
+            "- If the JD requires 0-3 years (Junior to Mid-level matching candidate experience), evaluate experience positively.\n"
+            "- If the JD strictly requires significantly higher experience (e.g. 5+, 7+, or 10+ years, Senior/Lead/Architect roles), heavily reduce fit_score (< 55) and set should_apply to false, explicitly stating the experience mismatch.\n"
+            "- If the JD does not specify years of experience, evaluate primarily on primary_skills alignment.\n"
             "Output must strictly comply with the requested JSON schema. "
             "Detect any screening questions (e.g. work authorization, notice period, tech stack experience) "
             "and provide inferred answers based on candidate qualifications."
@@ -156,6 +162,7 @@ class JobFitEvaluator:
                 primary_skills=primary_skills,
                 summary=summary,
                 target_roles=target_roles,
+                experience_years=experience_years,
                 screening=screening_answers,
                 min_threshold=min_score_threshold
             )
@@ -166,10 +173,11 @@ class JobFitEvaluator:
         primary_skills: list,
         summary: str,
         target_roles: list,
+        experience_years: int,
         screening: Dict[str, str],
         min_threshold: int
     ) -> Dict[str, Any]:
-        """Deterministic heuristic scoring based specifically on the role profile's primary_skills and summary."""
+        """Deterministic heuristic scoring based on role profile skills and required experience."""
         jd_lower = job_description.lower()
 
         # Check matched primary skills with safe punctuation handling (e.g. .NET, C#, C++, Vue.js)
@@ -189,17 +197,47 @@ class JobFitEvaluator:
             if any(token.lower() in jd_lower for token in re.split(r"[\s/().]+", r) if len(token) > 2)
         ]
 
-        # Base 50 + up to 35 points for matching primary skills + 15 for role alignment
+        # Experience matching: detect required years in JD
+        exp_matches = re.findall(
+            r"(\d+)\s*(?:\+|-\s*\d+)?\s*(?:years?|yrs?)(?:\s+of)?\s+(?:exp|experience|relevant|hands-on)",
+            jd_lower
+        )
+        required_min_years = None
+        if exp_matches:
+            try:
+                matched_ints = [int(m) for m in exp_matches if int(m) <= 20]
+                if matched_ints:
+                    required_min_years = min(matched_ints)
+            except Exception:
+                pass
+
+        exp_adjustment = 0
+        exp_note = ""
+        is_exp_mismatch = False
+
+        if required_min_years is not None:
+            if required_min_years > experience_years + 2:
+                # Severe mismatch (e.g. job wants 5+ or 8+ years, candidate has 1 or 3)
+                exp_adjustment = -35
+                is_exp_mismatch = True
+                exp_note = f" [EXP GAP: Requires {required_min_years}+ yrs vs candidate's {experience_years} yr]"
+            elif required_min_years <= experience_years:
+                # Well-aligned experience
+                exp_adjustment = 10
+                exp_note = f" [EXP MATCH: Requires {required_min_years} yrs, candidate has {experience_years} yrs]"
+
+        # Base 50 + skill points + role points + experience adjustment
         skill_boost = min(len(matched_skills) * 7, 35)
         role_boost = 15 if matched_roles else 0
-        fit_score = min(50 + skill_boost + role_boost, 98)
+        fit_score = max(min(50 + skill_boost + role_boost + exp_adjustment, 98), 15)
 
-        should_apply = fit_score >= min_threshold
+        should_apply = bool(fit_score >= min_threshold and not is_exp_mismatch)
 
         skills_summary = ", ".join(matched_skills[:5]) if matched_skills else "General software principles"
         reason = (
             f"Role-profile evaluation: Matched primary skills [{skills_summary}] "
             f"with role track targets [{', '.join(matched_roles[:2]) if matched_roles else 'Backend Engineering'}]."
+            f"{exp_note}"
         )
 
         salary_val = screening.get("salary_expectation") or "Negotiable"

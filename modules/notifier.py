@@ -30,11 +30,12 @@ class NotificationDispatcher:
         status: str,
         reason: str = "",
         message: str = "",
-        profile_used: str = ""
+        profile_used: str = "",
+        source: str = ""
     ) -> None:
         """Dispatch notification to Discord and/or Telegram."""
-        await self.send_discord_alert(title, company, url, fit_score, status, reason, message, profile_used)
-        await self.send_telegram_alert(title, company, url, fit_score, status, reason, message, profile_used)
+        await self.send_discord_alert(title, company, url, fit_score, status, reason, message, profile_used, source)
+        await self.send_telegram_alert(title, company, url, fit_score, status, reason, message, profile_used, source)
 
     async def send_discord_alert(
         self,
@@ -45,7 +46,8 @@ class NotificationDispatcher:
         status: str,
         reason: str = "",
         message: str = "",
-        profile_used: str = ""
+        profile_used: str = "",
+        source: str = ""
     ) -> bool:
         """Send rich Discord embed for APPLIED or MANUAL_REQUIRED events."""
         if not self.discord_webhook or self.discord_webhook.startswith("your_discord_webhook"):
@@ -62,11 +64,15 @@ class NotificationDispatcher:
         ]
         if profile_used:
             fields.append({"name": "Track / Profile", "value": f"`{profile_used}`", "inline": True})
+        if source:
+            fields.append({"name": "Platform / Source", "value": f"**{source}**", "inline": True})
 
         fields.extend([
             {"name": "Evaluation Rationale", "value": (reason[:1000] if reason else "N/A"), "inline": False},
             {"name": "Submission / Action Notes", "value": (message[:1000] if message else "N/A"), "inline": False}
         ])
+
+        footer_text = f"Platform: {source} • Google GenAI Engine" if source else "Role-Based Job Discovery & Application Engine • Google GenAI"
 
         payload = {
             "username": "Role Job Hunter Agent",
@@ -78,7 +84,7 @@ class NotificationDispatcher:
                     "color": color,
                     "fields": fields,
                     "footer": {
-                        "text": "Role-Based Job Discovery & Application Engine • Google GenAI"
+                        "text": footer_text
                     }
                 }
             ]
@@ -105,7 +111,8 @@ class NotificationDispatcher:
         status: str,
         reason: str = "",
         message: str = "",
-        profile_used: str = ""
+        profile_used: str = "",
+        source: str = ""
     ) -> bool:
         """Send Markdown formatted Telegram alert."""
         if not self.telegram_token or not self.telegram_chat_id:
@@ -113,9 +120,11 @@ class NotificationDispatcher:
 
         icon = "✅" if status.upper() == "APPLIED" else "⚠️"
         track_line = f"🏷️ *Track:* `{profile_used}`\n" if profile_used else ""
+        source_line = f"🌐 *Platform:* `{source}`\n" if source else ""
         text = (
             f"{icon} *[{status.upper()}]* *{title}* at *{company}*\n"
             f"{track_line}"
+            f"{source_line}"
             f"📊 *Score:* {fit_score}/100\n"
             f"📝 *Reason:* {reason}\n"
             f"ℹ️ *Notes:* {message}\n"

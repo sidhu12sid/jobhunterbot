@@ -1,9 +1,9 @@
-name: Daily Job Discovery & Application Engine
+name: Job Hunter Pipeline
 
 on:
   schedule:
-    # Runs at 03:30 UTC every day (09:00 AM IST)
-    - cron: '30 3 * * *'
+    - cron: '30 3 * * *'   # 9:00 AM IST (03:30 UTC)
+    - cron: '30 11 * * *'  # 5:00 PM IST (11:30 UTC)
   workflow_dispatch:
     inputs:
       track:
@@ -15,6 +15,11 @@ on:
           - ''
           - 'laravel'
           - 'dotnet_angular'
+      sources:
+        description: 'Target job platforms (comma-separated)'
+        required: false
+        default: 'LinkedIn,Indeed,Naukri,Glassdoor'
+        type: string
       dry_run:
         description: 'Run in Dry-Run mode (fills form, does not click final submit)'
         required: true
@@ -68,6 +73,9 @@ jobs:
           fi
           if [ -n "${{ inputs.track }}" ]; then
             EXTRA_ARGS="$EXTRA_ARGS --track ${{ inputs.track }}"
+          fi
+          if [ -n "${{ inputs.sources }}" ]; then
+            EXTRA_ARGS="$EXTRA_ARGS --sources \"${{ inputs.sources }}\""
           fi
           MAX_APPS="${{ inputs.max_apps || '5' }}"
           

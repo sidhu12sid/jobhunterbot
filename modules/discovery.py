@@ -45,22 +45,23 @@ class RoleJobDiscovery:
         role: str,
         location: str = "Remote",
         date_posted: str = "today",
-        country: str = "in"
+        country: str = "in",
+        sources: Optional[List[str]] = None
     ) -> List[Dict[str, Any]]:
-        """Query aggregator API for postings matching the role, location, and country.
+        """Query aggregator API for postings matching the role, location, country, and target sources.
 
         Deduplicates against SQLite applications table before returning.
         Returns list of normalized dicts:
-        {job_hash, company, title, url, description, location, is_remote, source}
+        {job_hash, company, title, url, description, location, is_remote, source, platform}
         """
         logger.info(
-            "Searching jobs for role='%s', location='%s', country='%s', date_posted='%s'",
-            role, location, country, date_posted
+            "Searching jobs for role='%s', location='%s', country='%s', date_posted='%s', sources=%s",
+            role, location, country, date_posted, sources
         )
         raw_jobs: List[Dict[str, Any]] = []
 
         if self.rapidapi_key and self.rapidapi_key != "your_rapidapi_jsearch_key":
-            raw_jobs = await self._fetch_from_jsearch(role, location, date_posted, country)
+            raw_jobs = await self._fetch_from_jsearch(role, location, date_posted, country, sources)
         else:
             logger.info("RAPIDAPI_KEY not configured or is placeholder. Using public aggregator fallback.")
             raw_jobs = await self._fetch_from_public_aggregator(role, location, country)
@@ -99,7 +100,8 @@ class RoleJobDiscovery:
                     "description": description,
                     "location": job_loc,
                     "is_remote": is_remote,
-                    "source": source
+                    "source": source,
+                    "platform": job.get("platform", source)
                 })
             else:
                 logger.debug("Skipping already indexed job: %s @ %s", title, company)
@@ -113,28 +115,31 @@ class RoleJobDiscovery:
         role: str,
         location: str = "Remote",
         date_posted: str = "today",
-        country: str = "in"
+        country: str = "in",
+        sources: Optional[List[str]] = None
     ) -> List[Dict[str, Any]]:
-        return await self.search_by_role(role, location, date_posted, country)
+        return await self.search_by_role(role, location, date_posted, country, sources)
 
     async def _fetch_from_jsearch(
         self,
         role: str,
         location: str,
         date_posted: str,
-        country: str
+        country: str,
+        sources: Optional[List[str]] = None
     ) -> List[Dict[str, Any]]:
-        """Fetch listings from RapidAPI JSearch API with country filtering."""
+        """Fetch listings from RapidAPI JSearch API with country and source filtering."""
         headers = {
             "x-rapidapi-key": self.rapidapi_key,
             "x-rapidapi-host": "jsearch.p.rapidapi.com"
         }
 
-        # Build query string
+        # Build query string with source targeting if specified
+        source_suffix = f" ({' OR '.join(sources)})" if sources else ""
         if location.strip().lower() == "remote":
-            query_str = f"{role} remote"
+            query_str = f"{role} remote{source_suffix}"
         else:
-            query_str = f"{role} in {location}"
+            query_str = f"{role} in {location}{source_suffix}"
 
         params = {
             "query": query_str,
@@ -180,6 +185,14 @@ class RoleJobDiscovery:
                     country_name = item.get("job_country")
                     loc = f"{city}, {country_name}" if city and country_name else (city or location)
                     is_remote = bool(item.get("job_is_remote", False))
+                    publisher = item.get("job_publisher") or item.get("job_source") or "Web"
+
+                    # Source matching filter if specified
+                    if sources:
+                        pub_lower = publisher.lower()
+                        url_lower = url.lower()
+                        if not any(s.lower() in pub_lower or s.lower() in url_lower for s in sources):
+                            continue
 
                     results.append({
                         "company": company,
@@ -188,7 +201,8 @@ class RoleJobDiscovery:
                         "location": loc,
                         "is_remote": is_remote,
                         "description": description,
-                        "source": "jsearch"
+                        "source": publisher,
+                        "platform": publisher
                     })
                 return results
         except Exception as exc:
