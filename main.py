@@ -205,7 +205,8 @@ async def run_engine(
                         job_description=description,
                         role_profile=profile_data,
                         global_screening=track_screening,
-                        min_score_threshold=min_score
+                        min_score_threshold=min_score,
+                        job_title=title
                     )
 
                     fit_score = eval_result["fit_score"]

@@ -46,6 +46,20 @@
       ],
       "resume_path": "assets/Sidharth_Soman_Laravel_Developer_Resume.pdf",
       "experience_years": 1,
+      "core_anchors": [
+        "Laravel",
+        "PHP"
+      ],
+      "negative_keywords": [
+        "Java",
+        "Spring Boot",
+        "Python",
+        "Django",
+        ".NET",
+        "C#",
+        "Ruby on Rails",
+        "Golang"
+      ],
       "primary_skills": [
         "Laravel",
         "PHP",
@@ -76,6 +90,24 @@
       ],
       "resume_path": "assets/Sidharth_Soman_DotNet_Developer_Resume.pdf",
       "experience_years": 3,
+      "core_anchors": [
+        ".NET",
+        ".NET Core",
+        "C#",
+        "ASP.NET",
+        "Dotnet"
+      ],
+      "negative_keywords": [
+        "Java",
+        "Spring Boot",
+        "Python",
+        "Django",
+        "PHP",
+        "Laravel",
+        "Ruby on Rails",
+        "Golang",
+        "React Native"
+      ],
       "primary_skills": [
         ".NET",
         ".NET Core",

@@ -223,11 +223,20 @@ class RoleJobDiscovery:
                 resp = await client.get("https://www.arbeitnow.com/api/job-board-api")
                 if resp.status_code == 200:
                     data = resp.json().get("data", [])
+                    # Exclude generic non-technical words so generic words don't match unrelated stacks
+                    generic_words = {"full", "stack", "developer", "software", "engineer", "lead", "senior", "junior", "backend", "frontend", "web"}
                     role_tokens = [t.lower() for t in re.split(r"[\s/().]+", role) if len(t) > 2]
+                    tech_tokens = [t for t in role_tokens if t not in generic_words]
+
                     for item in data:
                         title = item.get("title", "")
                         title_lower = title.lower()
-                        if any(token in title_lower for token in role_tokens):
+                        desc_lower = clean_text(item.get("description", "")).lower()
+                        combined = f"{title_lower} {desc_lower}"
+
+                        # If tech tokens exist (e.g. laravel, php, dotnet, c#, angular), at least one must match
+                        matches = any(t in combined for t in tech_tokens) if tech_tokens else any(t in title_lower for t in role_tokens)
+                        if matches:
                             results.append({
                                 "company": item.get("company_name", "Unknown"),
                                 "title": title,
