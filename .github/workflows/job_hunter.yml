@@ -2,8 +2,8 @@ name: Job Hunter Pipeline
 
 on:
   schedule:
-    - cron: '30 3 * * *'   # 9:00 AM IST (03:30 UTC)
-    - cron: '30 11 * * *'  # 5:00 PM IST (11:30 UTC)
+    - cron: '34 3 * * *'   # ~9:04 AM IST (03:34 UTC) - Shifted off-hour to bypass GitHub traffic queues
+    - cron: '41 11 * * *'  # ~5:11 PM IST (11:41 UTC) - Shifted off-hour to bypass GitHub traffic queues
   workflow_dispatch:
     inputs:
       track:
@@ -61,31 +61,50 @@ jobs:
       - name: Run Job Discovery & Application Engine
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_MODEL: ${{ secrets.GEMINI_MODEL || 'gemini-3.8-flash' }}
+          GEMINI_MODEL: ${{ secrets.GEMINI_MODEL || 'gemini-2.5-flash' }}
           RAPIDAPI_KEY: ${{ secrets.RAPIDAPI_KEY }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           HEADLESS: 'true'
           DATABASE_PATH: 'database/applications.db'
         run: |
           EXTRA_ARGS=""
-          if [ "${{ inputs.dry_run }}" = "false" ]; then
+          
+          # 1. Safely handle Dry Run logic (Cron runs don't pass github.event.inputs)
+          IS_DRY_RUN="${{ inputs.dry_run }}"
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "$IS_DRY_RUN" = "true" ] || [ -z "$IS_DRY_RUN" ]; then
+            echo "Mode: SAFE DRY-RUN"
+          else
+            echo "Mode: LIVE PRODUCTION"
             EXTRA_ARGS="$EXTRA_ARGS --live"
           fi
-          if [ -n "${{ inputs.track }}" ]; then
-            EXTRA_ARGS="$EXTRA_ARGS --track ${{ inputs.track }}"
+          
+          # 2. Extract Track variable safely
+          TRACK_VAL="${{ inputs.track }}"
+          if [ -n "$TRACK_VAL" ]; then
+            EXTRA_ARGS="$EXTRA_ARGS --track $TRACK_VAL"
           fi
-          if [ -n "${{ inputs.sources }}" ]; then
-            EXTRA_ARGS="$EXTRA_ARGS --sources \"${{ inputs.sources }}\""
+          
+          # 3. Handle Sources string validation
+          SOURCES_VAL="${{ inputs.sources }}"
+          if [ "${{ github.event_name }}" = "schedule" ] || [ -z "$SOURCES_VAL" ]; then
+            SOURCES_VAL="LinkedIn,Indeed,Naukri,Glassdoor"
           fi
-          MAX_APPS="${{ inputs.max_apps || '5' }}"
+          EXTRA_ARGS="$EXTRA_ARGS --sources \"$SOURCES_VAL\""
+          
+          # 4. Resolve Maximum Application Limit
+          MAX_APPS="${{ inputs.max_apps }}"
+          if [ "${{ github.event_name }}" = "schedule" ] || [ -z "$MAX_APPS" ]; then
+            MAX_APPS="5"
+          fi
           
           python main.py --max-apps "$MAX_APPS" $EXTRA_ARGS
 
       - name: Persist SQLite Database State (Deduplication History)
         run: |
           git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.email "github-actions[bot]@://github.com"
           git add database/applications.db
+          # Commits only if there are database changes, prevents workflow pipeline failure loops
           git diff --staged --quiet || (git commit -m "chore(db): update applications database state [skip ci]" && git push)
 
       - name: Upload Applications Database Artifact
